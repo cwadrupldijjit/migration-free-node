@@ -1,0 +1,20 @@
+{
+	"compilerOptions": {
+		"strict": false,
+		"target": "esnext",
+		"module": "nodenext",
+		"moduleResolution": "nodenext",
+		"lib": [
+			"ESNext"
+		],
+		"esModuleInterop": true,
+		"allowSyntheticDefaultImports": true,
+		"allowImportingTsExtensions": true,
+		// the following two are done to suppress some warnings and "errors"
+		"declaration": true,
+		"emitDeclarationOnly": true
+	},
+	"references": [
+		{ "path": "tsconfig.test.json" }
+	]
+}

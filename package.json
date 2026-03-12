@@ -1,0 +1,18 @@
+{
+	"name": "migration-free-node",
+	"author": {
+		"name": "Samuel Skeen",
+		"email": "sskeen9@gmail.com",
+		"url": "https://github.com/cwadrupldijjit"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/cwadrupldijjit/migration-free-node"
+	},
+	"description": "This is a project where I have pulled out a first attempt at migrationless DB updates.  Light on dependencies.  Using TypeScript as the original project had.",
+	"main": "main.ts",
+	"type": "module",
+	"devDependencies": {
+		"@types/node": "^25.4.0"
+	}
+}

@@ -1,0 +1,16 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "Launch main",
+			"type": "node",
+			"request": "launch",
+			// "runtimeArgs": [ "--version" ],
+			"program": "${workspaceFolder}/main.ts",
+			"skipFiles": [
+				"${/**"
+			],
+			"console": "integratedTerminal"
+		}
+	]
+}
