@@ -16,9 +16,9 @@ db.exec(getMetaTableSeedQueries(db));
 const seedStatements: string[] = [];
 
 const seedModuleReferences = glob(
-	'*.seed.ts',
+	'**/*.seed.ts',
 	{
-		cwd: join(import.meta.dirname, '..'),
+		cwd: import.meta.dirname,
 		withFileTypes: true,
 		exclude: [ 'node_modules', '__tests__' ],
 	},
