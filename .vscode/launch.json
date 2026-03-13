@@ -5,7 +5,6 @@
 			"name": "Launch main",
 			"type": "node",
 			"request": "launch",
-			// "runtimeArgs": [ "--version" ],
 			"program": "${workspaceFolder}/main.ts",
 			"skipFiles": [
 				"${/**"
