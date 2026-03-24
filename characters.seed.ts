@@ -276,35 +276,48 @@ const dependencySeedFunctions: typeof getSeedSql[] = [
 
 let initialized = false;
 
-export function getSeedSql(db: DatabaseSync): string {
+export function *getSeedSql(db: DatabaseSync): Generator<string> {
 	if (!db?.isOpen) {
 		throw new Error('Database is not open; cannot seed navigation data.');
 	}
 	
 	// this prevents duplication during generation
 	if (initialized) {
-		return '';
+		return;
 	}
-	
-	const seedSqlStatements: string[] = [];
 	
 	for (const depSeedSqlMethod of dependencySeedFunctions) {
-		seedSqlStatements.push(depSeedSqlMethod(db));
+		for (const sql of depSeedSqlMethod(db)) {
+			yield sql;
+		}
 	}
 	
-	seedSqlStatements.push(
-		'--- Seeding characters tables (characters.seed.ts) ---',
-		setupToSql(characterTableSetup, db),
-		setupToSql(characterRelationshipTableSetup, db),
-		setupToSql(characterGroupsTableSetup, db),
-		setupToSql(characterGroupAffiliationTableSetup, db),
-		setupToSql(characterLocationTableSetup, db),
-		setupToSql(characterItemTableSetup, db),
-	);
+	yield '--- Seeding characters tables (characters.seed.ts) ---';
+	for (const sql of setupToSql(characterTableSetup, db)) {
+		yield sql;
+	}
+	
+	for (const sql of setupToSql(characterRelationshipTableSetup, db)) {
+		yield sql;
+	}
+	
+	for (const sql of setupToSql(characterGroupsTableSetup, db)) {
+		yield sql;
+	}
+	
+	for (const sql of setupToSql(characterGroupAffiliationTableSetup, db)) {
+		yield sql;
+	}
+	
+	for (const sql of setupToSql(characterLocationTableSetup, db)) {
+		yield sql;
+	}
+	
+	for (const sql of setupToSql(characterItemTableSetup, db)) {
+		yield sql;
+	}
 	
 	initialized = true;
-	
-	return seedSqlStatements.filter(Boolean).join('\n');
 }
 
 

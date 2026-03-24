@@ -2,6 +2,7 @@ import { parseEnv } from 'node:util';
 import { existsSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { glob } from 'node:fs/promises';
 import { getMetaTableSeedQueries } from './db/db-shared.ts';
 
@@ -11,9 +12,26 @@ if (existsSync(join(import.meta.dirname, '.env'))) {
 
 const db = new DatabaseSync(process.env.DATABASE_LOCATION ?? join(import.meta.dirname, 'sample.db'), { open: true });
 
-db.exec(getMetaTableSeedQueries(db));
+let metaSeedQuery = '';
 
-const seedStatements: string[] = [];
+for (const sql of getMetaTableSeedQueries(db)) {
+	metaSeedQuery += sql + '\n';
+}
+
+try {
+	if (metaSeedQuery) {
+		db.exec(metaSeedQuery);
+	}
+}
+catch (e) {
+	console.error(
+		`META SEED QUERY:\n${metaSeedQuery}\n`,
+		`Error during database load:`,
+		(e as Error).stack,
+	);
+}
+
+let fullSeedQuery = '';
 
 const seedModuleReferences = glob(
 	'**/*.seed.ts',
@@ -25,15 +43,22 @@ const seedModuleReferences = glob(
 );
 
 for await (const seedModuleReference of seedModuleReferences) {
-	const seedModule = await import(join(seedModuleReference.parentPath, seedModuleReference.name));
-	seedStatements.push(seedModule.getSeedSql?.(db));
+	let moduleReference = join(seedModuleReference.parentPath, seedModuleReference.name);
 	
-	if (seedModule.getSeedDataSql) {
-		seedStatements.push(seedModule.getSeedDataSql(db));
+	if (process.platform == 'win32') {
+		moduleReference = `${pathToFileURL(moduleReference)}`;
+	}
+	
+	const seedModule = await import(moduleReference);
+	
+	for (const sql of seedModule.getSeedSql?.(db) ?? []) {
+		fullSeedQuery += sql + '\n';
+	}
+	
+	for (const sql of seedModule.getSeedDataSql?.(db) ?? []) {
+		fullSeedQuery += sql + '\n';
 	}
 }
-
-const fullSeedQuery = seedStatements.filter(Boolean).join('\n');
 
 try {
 	db.exec([
@@ -46,7 +71,9 @@ try {
 }
 catch (err) {
 	console.error(
-		`SEED QUERY:\n${fullSeedQuery}\n`,
+		`SEED QUERY:\n${fullSeedQuery
+			
+		}\n`,
 		`Error during database load:`,
 		(err as Error).stack,
 	);

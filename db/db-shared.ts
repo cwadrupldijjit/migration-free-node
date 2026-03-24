@@ -12,20 +12,6 @@ import type {
 	DbReferencesObject,
 } from './db.types.d.ts';
 import { parseCreateIndexSql, parseCreateTableSql } from './parse-sql.ts';
-import { charactersTableName } from '../characters.seed.ts';
-import { itemsTableName } from '../items.seed.ts';
-import { locationsTableName } from '../locations.seed.ts';
-
-// TODO:  Make this more automatic rather than explicit and, ideally, not here
-export const referenceableTables = {
-	[charactersTableName]: 'id',
-	[itemsTableName]: 'id',
-	[locationsTableName]: 'id',
-} as const;
-
-export const referencingTables: [string, string][] = [
-	// this irrelevant to this example
-];
 
 const metaTablesSetup: (TrackedDbTableSetup & { previousNames?: string[] })[] = [
 	{
@@ -89,28 +75,29 @@ const metaTablesSetup: (TrackedDbTableSetup & { previousNames?: string[] })[] = 
 	},
 ];
 
-export function getMetaTableSeedQueries(db: DatabaseSync) {
+export function *getMetaTableSeedQueries(db: DatabaseSync): Generator<string> {
 	if (!db?.isOpen) {
 		throw new Error('Database is not open; cannot seed meta data.');
 	}
 	
-	const seedSqlStatements = [];
-	
 	const metaTables = db.prepare('SELECT * FROM sqlite_master WHERE type = \'table\' AND name like \'%_meta\'').all() as unknown[] as SqliteMasterRecord[];
 	for (const table of metaTablesSetup) {
 		const existingTable = metaTables.find(mt => mt.name == table.name || table.previousNames?.includes(mt.name));
+		let setupFn: () => Generator<string>;
 		if (!existingTable) {
-			seedSqlStatements.push(setupToCreateSql(table, true));
+			setupFn = setupToCreateSql.bind(null, table, true);
 		}
 		else {
-			seedSqlStatements.push(setupToUpdateSql(table, db, true));
+			setupFn = setupToUpdateSql.bind(null, table, db, true);
+		}
+		
+		for (const sql of setupFn()) {
+			yield sql;
 		}
 	}
-	
-	return seedSqlStatements.join('\n');
 }
 
-export function setupToSql(tableSetupObject: TrackedDbTableSetup, db: DatabaseSync, metaMode = false) {
+export function setupToSql(tableSetupObject: TrackedDbTableSetup, db: DatabaseSync, metaMode = false): Generator<string> {
 	if (!db?.isOpen) {
 		throw new Error('Database is not open; cannot setup tables.');
 	}
@@ -125,45 +112,46 @@ export function setupToSql(tableSetupObject: TrackedDbTableSetup, db: DatabaseSy
 	}
 }
 
-export function setupToCreateSql(tableSetupObject: TrackedDbTableSetup, metaMode = false) {
-	const statements: string[] = [];
+/**
+ * This turns a setup object into the necessary sql to add it to the database.  No DB connection is required
+ * since no diff is needed.  If `skipMeta` is set to `true`, it will only yield the CREATE TABLE statement
+ * without meta updates.
+ * @param tableSetupObject The table setup object which is being used to generate the create table statement
+ * @param skipMeta Used to suppress any "meta" inserts (such as if intending to create meta tables)
+ */
+export function *setupToCreateSql(tableSetupObject: TrackedDbTableSetup, skipMeta = false): Generator<string> {
 	const createCKIClauses: string[] = [];
 	const tableOptions: string[] = [];
-	const createIndexClauses: string[] = [];
-	const metaInserts: string[] = [
-		`INSERT INTO __table_meta (uuid, name) VALUES ('${tableSetupObject.uuid}', '${tableSetupObject.name}');`,
-	];
+	const metaColumnInserts: string[] = [];
 	
 	for (const field of tableSetupObject.fields) {
 		createCKIClauses.push(createFieldClause(field));
-		metaInserts.push(`INSERT INTO __column_meta (uuid, table_uuid, name) VALUES ('${field.uuid ?? tableSetupObject.uuid + '_' + field.name}', '${tableSetupObject.uuid}', '${field.name}');`);
+		metaColumnInserts.push(`INSERT INTO __column_meta (uuid, table_uuid, name) VALUES ('${field.uuid ?? tableSetupObject.uuid + '_' + field.name}', '${tableSetupObject.uuid}', '${field.name}');`);
 	}
 	
-	if (tableSetupObject.constraints) {
-		for (const constraint of tableSetupObject.constraints) {
-			const constraintClause: string[] = [];
-			
-			if (constraint.name) {
-				constraintClause.push(`CONSTRAINT ${constraint.name}`);
-			}
-			
-			constraintClause.push(
-				constraint.type,
-				`(${constraint.fields.join(', ')})`,
-			);
-			
-			if ((constraint.type == 'PRIMARY KEY' || constraint.type == 'UNIQUE') && constraint.onConflict) {
-				constraintClause.push(`ON CONFLICT ${constraint.onConflict}`);
-			}
-			if (constraint.type == 'FOREIGN KEY') {
-				if (!constraint.references?.table) {
-					throw new TypeError('FOREIGN KEY constraints must have a references clause');
-				}
-				
-				constraintClause.push(createReferencesClause(constraint.references));
-			}
-			createCKIClauses.push(constraintClause.join(' '));
+	for (const constraint of tableSetupObject.constraints ?? []) {
+		const constraintClause: string[] = [];
+		
+		if (constraint.name) {
+			constraintClause.push(`CONSTRAINT ${constraint.name}`);
 		}
+		
+		constraintClause.push(
+			constraint.type,
+			`(${constraint.fields.join(', ')})`,
+		);
+		
+		if ((constraint.type == 'PRIMARY KEY' || constraint.type == 'UNIQUE') && constraint.onConflict) {
+			constraintClause.push(`ON CONFLICT ${constraint.onConflict}`);
+		}
+		if (constraint.type == 'FOREIGN KEY') {
+			if (!constraint.references?.table) {
+				throw new TypeError('FOREIGN KEY constraints must have a references clause');
+			}
+			
+			constraintClause.push(createReferencesClause(constraint.references));
+		}
+		createCKIClauses.push(constraintClause.join(' '));
 	}
 	
 	if (tableSetupObject.options) {
@@ -175,24 +163,24 @@ export function setupToCreateSql(tableSetupObject: TrackedDbTableSetup, metaMode
 		}
 	}
 	
-	if (tableSetupObject.indexes) {
-		for (const index of tableSetupObject.indexes) {
-			createIndexClauses.push(indexToCreateSql(index, tableSetupObject.name));
+	// first statement:  create table clause
+	yield `CREATE TABLE ${tableSetupObject.name} (
+	${createCKIClauses.join(',\n\t')}
+)${tableOptions.length ? '\n' + tableOptions.join(',\n') : ''};`;
+	
+	// next statements: any indexes
+	for (const index of tableSetupObject.indexes ?? []) {
+		yield indexToCreateSql(index, tableSetupObject.name);
+	}
+	
+	// last statements: any meta table updates
+	if (!skipMeta) {
+		yield `INSERT INTO __table_meta (uuid, name) VALUES ('${tableSetupObject.uuid}', '${tableSetupObject.name}');`;
+		
+		for (const meta of metaColumnInserts) {
+			yield meta;
 		}
 	}
-	statements.push(`CREATE TABLE ${tableSetupObject.name} (
-	${createCKIClauses.join(',\n\t')}
-)${tableOptions.length ? '\n' + tableOptions.join(',\n') : ''};`);
-	
-	if (createIndexClauses.length) {
-		statements.push(createIndexClauses.join(';\n') + ';');
-	}
-	
-	if (!metaMode) {
-		statements.push(...metaInserts);
-	}
-	
-	return statements.join('\n');
 }
 
 function createReferencesClause(reference: DbReferencesObject) {
@@ -211,16 +199,16 @@ function createReferencesClause(reference: DbReferencesObject) {
 	return referenceString;
 }
 
-export function setupToUpdateSql(tableSetupObject: TrackedDbTableSetup, db: DatabaseSync, metaMode = false) {
-	const tableMetaRecord = !metaMode ?
+export function *setupToUpdateSql(tableSetupObject: TrackedDbTableSetup, db: DatabaseSync, skipMeta = false): Generator<string> {
+	const tableMetaRecord = !skipMeta ?
 		db.prepare(`SELECT * FROM __table_meta WHERE uuid = ?`).get(tableSetupObject.uuid) as unknown as TableMetaRecord :
 		null;
 	
-	const columnMetaRecords = !metaMode ?
+	const columnMetaRecords = !skipMeta ?
 		db.prepare(`SELECT * FROM __column_meta WHERE table_uuid = ?`).all(tableSetupObject.uuid) as unknown[] as ColumnMetaRecord[] :
 		null;
 	
-	const indexMetaRecords = !metaMode ?
+	const indexMetaRecords = !skipMeta ?
 		db.prepare(`SELECT * FROM __index_meta WHERE table_uuid = ?`).all(tableSetupObject.uuid) as unknown[] as IndexMetaRecord[] :
 		null;
 	
@@ -229,9 +217,10 @@ export function setupToUpdateSql(tableSetupObject: TrackedDbTableSetup, db: Data
 	const currentTableSchema = parseCreateTableSql(currentTableSql);
 	
 	const existingIndexes = (db.prepare(`SELECT * FROM sqlite_master WHERE type = 'index' AND tbl_name = ?`)
+															// I know, I know, unknown cast is cringe; best I can do
 		.all(tableMetaRecord?.name ?? tableSetupObject.name) as unknown[] as SqliteMasterRecord[])
 		.filter(idx => !idx.name.startsWith('sqlite_autoindex_') || idx.sql)
-		.map(idx => idx.sql ? parseCreateIndexSql(idx.sql as string) : null)
+		.map(idx => idx.sql ? parseCreateIndexSql(idx.sql as string) : null);
 	
 	const diffResult = diffTableSchemas(
 		tableSetupObject,
@@ -240,59 +229,8 @@ export function setupToUpdateSql(tableSetupObject: TrackedDbTableSetup, db: Data
 		existingIndexes ?? [],
 		columnMetaRecords ?? [],
 		indexMetaRecords ?? [],
-		metaMode,
+		skipMeta,
 	);
-	
-	const metaUpdates: string[] = [];
-	const renameReferencesUpdates: string[] = [];
-	
-	if (!metaMode) {
-		if (diffResult.tableRename) {
-			renameReferencesUpdates.push(
-				...referencingTables
-					.map(([ refTable, refField ]) => `UPDATE ${refTable} SET ${refField} = '${diffResult.tableRename[1]}' WHERE ${refField} = '${diffResult.tableRename[0]}'`)
-			);
-			metaUpdates.push(`UPDATE __table_meta SET name = '${diffResult.tableRename[1]}' WHERE uuid = '${tableSetupObject.uuid}'`);
-		}
-		
-		// *sigh*, I guess we'll handle the following loops twice.  It shouldn't be that large of a cost.
-		for (const column of diffResult.newColumns ?? []) {
-			metaUpdates.push(`INSERT INTO __column_meta (uuid, table_uuid, name) VALUES ('${column.uuid}', '${tableSetupObject.uuid}', '${column.name}')`);
-		}
-		
-		for (const [ oldName, [ newName, uuid ] ] of Object.entries(diffResult.renamedColumns ?? {})) {
-			metaUpdates.push(`UPDATE __column_meta SET name = '${newName}' WHERE uuid = '${uuid}'`);
-		}
-		
-		for (const columnName of diffResult.extraneousColumns ?? []) {
-			const columnMetaRecord = columnMetaRecords?.find(col => col.name == columnName);
-			if (columnMetaRecord) {
-				metaUpdates.push(`DELETE FROM __column_meta WHERE uuid = '${columnMetaRecord.uuid}'`);
-			}
-		}
-		
-		for (const index of diffResult.newIndexes ?? []) {
-			metaUpdates.push(`INSERT INTO __index_meta (uuid, table_uuid, name) VALUES ('${index.uuid}', '${tableSetupObject.uuid}', '${index.name}')`);
-		}
-		
-		for (const [ existingIndexName, index ] of Object.entries(diffResult.indexesToRefresh ?? {})) {
-			// the only need for meta updates would be a renaming of the index
-			if (existingIndexName == index.name) {
-				continue;
-			}
-			const indexMetaRecord = indexMetaRecords?.find(idx => idx.name == existingIndexName);
-			if (indexMetaRecord) {
-				metaUpdates.push(`UPDATE __index_meta SET name = '${index.name}' WHERE uuid = '${indexMetaRecord.uuid}'`);
-			}
-		}
-		
-		for (const indexName of diffResult.extraneousIndexes ?? []) {
-			const indexMetaRecord = indexMetaRecords?.find(idx => idx.name == indexName);
-			if (indexMetaRecord) {
-				metaUpdates.push(`DELETE FROM __index_meta WHERE uuid = '${indexMetaRecord.uuid}'`);
-			}
-		}
-	}
 	
 	if (
 		diffResult.hasConstraintChanges ||
@@ -311,45 +249,88 @@ export function setupToUpdateSql(tableSetupObject: TrackedDbTableSetup, db: Data
 			}
 		}
 		
-		return [
-			...existingIndexes.map(idx => `DROP INDEX IF EXISTS ${idx.name}`),
-			'PRAGMA foreign_keys=off',
-			setupToCreateSql(tableSetupObject, true)
-				.replace(`CREATE TABLE ${tableSetupObject.name}`, `CREATE TABLE ${tempTableName}`)
-				// this is to remove the extra semicolon at the end; likely isn't an issue, but is at least a little cleaner
-				.slice(0, -1),
-			`INSERT INTO ${tempTableName} (${
-				tableSetupObject.fields
-					.filter(f => newToOldColumnMap[f.name])
-					.map(f => f.name).join(', ')
-			}) SELECT ${
-				tableSetupObject.fields
-					.filter(f => newToOldColumnMap[f.name])
-					.map(f => newToOldColumnMap[f.name]).join(', ')
-			} FROM ${tableSetupObject.name}`,
-			`DROP TABLE ${tableSetupObject.name}`,
-			`ALTER TABLE ${tempTableName} RENAME TO ${tableSetupObject.name}`,
-			'PRAGMA foreign_keys=on',
-			...(metaMode ? [] : metaUpdates ?? []),
-		].join(';\n') + ';';
+		// drop all existing indexes to prevent future name conflicts in the new table
+		for (const index of existingIndexes) {
+			yield `DROP INDEX IF EXISTS ${index.name};`;
+		}
+		
+		yield 'PRAGMA foreign_keys=off;';
+		
+		const indexesToCreate: string[] = [];
+		
+		// the "for" unwraps the generator to be the desired string
+		for (const setupString of setupToCreateSql(tableSetupObject, true)) {
+			if (setupString.startsWith('CEATE TABLE')) {
+				yield setupString.replace(`CREATE TABLE ${tableSetupObject.name}`, `CREATE TABLE ${tempTableName}`);
+			}
+			// create indexes after the table is created to avoid changing the table name in the string
+			else if (/^CREATE(?: UNIQUE)? INDEX/.test(setupString)) {
+				indexesToCreate.push(setupString);
+			}
+		}
+		
+		yield `INSERT INTO ${tempTableName} (${
+			tableSetupObject.fields
+				.filter(f => newToOldColumnMap[f.name])
+				.map(f => f.name).join(', ')
+		}) SELECT ${
+			tableSetupObject.fields
+				.filter(f => newToOldColumnMap[f.name])
+				.map(f => newToOldColumnMap[f.name]).join(', ')
+		} FROM ${tableSetupObject.name};`;
+		
+		yield `DROP TABLE ${tableSetupObject.name};`;
+		
+		yield `ALTER TABLE ${tempTableName} RENAME TO ${tableSetupObject.name};`;
+		
+		for (const indexString of indexesToCreate) {
+			yield indexString;
+		}
+		
+		yield 'PRAGMA foreign_keys=on;';
+	}
+	else {
+		if (diffResult.tableRename) {
+			yield `ALTER TABLE ${diffResult.tableRename[0]} RENAME TO ${diffResult.tableRename[1]};`;
+		}
+		
+		for (const [ existingIndexName, index ] of Object.entries(diffResult.indexesToRefresh ?? {})) {
+			yield `DROP INDEX IF EXISTS ${existingIndexName};`;
+			yield indexToCreateSql(index, tableSetupObject.name);
+		}
+		
+		for (const index of diffResult.newIndexes ?? []) {
+			yield indexToCreateSql(index, tableSetupObject.name);
+		}
+		
+		for (const indexName of diffResult.extraneousIndexes ?? []) {
+			yield `DROP INDEX IF EXISTS ${indexName};`;
+		}
+		
+		for (const [ oldName, [ newName ]] of Object.entries(diffResult.renamedColumns ?? {})) {
+			yield `ALTER TABLE ${tableSetupObject.name} RENAME COLUMN ${oldName} TO ${newName};`;
+		}
+		
+		for (const col of diffResult.newColumns ?? []) {
+			yield `ALTER TABLE ${tableSetupObject.name} ADD COLUMN ${createFieldClause(col)};`;
+		}
+		
+		for (const colName of diffResult.extraneousColumns ?? []) {
+			yield `ALTER TABLE DROP COLUMN ${colName};`;
+		}
+		
+		if (!skipMeta) {
+			for (const update of diffResult.metaUpdates ?? []) {
+				yield update;
+			}
+		}
 	}
 	
-	return [
-		...(diffResult.tableRename ? [ `ALTER TABLE ${diffResult.tableRename[0]} RENAME TO ${diffResult.tableRename[1]}` ] : []),
-		...(diffResult.indexesToRefresh ?
-				Object.entries(diffResult.indexesToRefresh)
-					.flatMap(([ existingIndexName, index ]) => [
-						'DROP INDEX IF EXISTS ' + existingIndexName,
-						indexToCreateSql(index, tableSetupObject.name),
-					]) :
-				[]),
-		...(diffResult.newIndexes ? diffResult.newIndexes.map(index => indexToCreateSql(index, tableSetupObject.name)) : []),
-		...(diffResult.extraneousIndexes ? diffResult.extraneousIndexes.map(indexName => `DROP INDEX IF EXISTS ${indexName}`) : []),
-		...(diffResult.renamedColumns ? Object.entries(diffResult.renamedColumns).map(([ oldName, [ newName ] ]) => `ALTER TABLE ${tableSetupObject.name} RENAME COLUMN ${oldName} TO ${newName}`) : []),
-		...(diffResult.newColumns ? diffResult.newColumns.map(col => `ALTER TABLE ${tableSetupObject.name} ADD COLUMN ${createFieldClause(col)}`) : []),
-		...(diffResult.extraneousColumns ? diffResult.extraneousColumns.map(colName => `ALTER TABLE DROP COLUMN ${colName}`) : []),
-		...(metaMode ? [] : metaUpdates ?? []),
-	].join(';\n') + ';';
+	if (!skipMeta && diffResult.metaUpdates) {
+		for (const sql of diffResult.metaUpdates) {
+			yield sql;
+		}
+	}
 }
 
 function createFieldClause(field: DbFieldObject) {
@@ -418,7 +399,7 @@ function indexToCreateSql(index: DbIndexObject, tableName: string) {
 	if (index.where) {
 		indexClause.push(`WHERE ${index.where}`);
 	}
-	return indexClause.join(' ');
+	return indexClause.join(' ') + ';';
 }
 
 export function maybeHydrateEntity<

@@ -17,7 +17,7 @@ export function diffTableSchemas(
 	currentIndexes: DbIndexObject[] = [],
 	columnMetaRecords: ColumnMetaRecord[] = [],
 	indexMetaRecords: IndexMetaRecord[] = [],
-	metaMode = false
+	skipMeta = false
 ) {
 	const result = {} as DiffTableSchemasResult;
 	
@@ -30,7 +30,7 @@ export function diffTableSchemas(
 	const indexesToRefresh: Record<string, TrackedDbIndexObject> = {};
 	const metaUpdates: string[] = [];
 	
-	if (!metaMode && !tableMetaRecord) {
+	if (!skipMeta && !tableMetaRecord) {
 		metaUpdates.push(`INSERT INTO __table_meta (uuid, name) VALUES ('${tableSetupObject.uuid}', '${tableSetupObject.name}');`);
 	}
 	
@@ -44,12 +44,12 @@ export function diffTableSchemas(
 		
 		if (!existingColumn) {
 			newColumns.push(field);
-			!metaMode && metaUpdates.push(`INSERT INTO __column_meta (uuid, table_uuid, name) VALUES ('${field.uuid}', '${tableSetupObject.uuid}', '${field.name}');`);
+			!skipMeta && metaUpdates.push(`INSERT INTO __column_meta (uuid, table_uuid, name) VALUES ('${field.uuid}', '${tableSetupObject.uuid}', '${field.name}');`);
 		}
 		else {
 			if (field.name != existingColumn.name) {
 				renamedColumns[existingColumn.name] = [ field.name, field.uuid ];
-				!metaMode && metaUpdates.push(`UPDATE __column_meta SET name = '${field.name}' WHERE uuid = '${field.uuid}';`);
+				!skipMeta && metaUpdates.push(`UPDATE __column_meta SET name = '${field.name}' WHERE uuid = '${field.uuid}';`);
 			}
 			
 			if (
@@ -97,10 +97,11 @@ export function diffTableSchemas(
 				c.fields.every((field) => constraint.fields.includes(field)) &&
 				c.name == constraint.name &&
 				c.onConflict == constraint.onConflict &&
-				c.references?.table == constraint.references?.table &&
-				c.references?.fields?.every((field) => constraint.references?.fields?.includes(field)) &&
-				c.references?.onDelete == constraint.references?.onDelete &&
-				c.references?.onUpdate == constraint.references?.onUpdate;
+				((!c.references && !constraint.references) ||
+				(c.references?.table == constraint.references?.table &&
+				((!c.references?.fields && !constraint.references?.fields) || c.references?.fields?.every((field) => constraint.references?.fields?.includes(field))) &&
+				c.references.onDelete == constraint.references.onDelete &&
+				c.references.onUpdate == constraint.references.onUpdate));
 		});
 		
 		if (!matchingConstraint) {
@@ -154,11 +155,11 @@ export function diffTableSchemas(
 		
 		if (!existingIndex) {
 			newIndexes.push(index);
-			!metaMode && metaUpdates.push(`INSERT INTO __index_meta (uuid, table_uuid, name) VALUES ('${index.uuid}', '${tableSetupObject.uuid}', '${index.name}');`);
+			!skipMeta && metaUpdates.push(`INSERT INTO __index_meta (uuid, table_uuid, name) VALUES ('${index.uuid}', '${tableSetupObject.uuid}', '${index.name}');`);
 		}
 		else {
 			if (index.name != existingIndex.name) {
-				!metaMode && metaUpdates.push(`UPDATE __index_meta SET name = '${index.name}' WHERE uuid = '${index.uuid}';`);
+				!skipMeta && metaUpdates.push(`UPDATE __index_meta SET name = '${index.name}' WHERE uuid = '${index.uuid}';`);
 			}
 			
 			if (

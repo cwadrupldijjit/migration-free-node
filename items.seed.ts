@@ -51,30 +51,28 @@ const dependencySeedFunctions: typeof getSeedSql[] = [];
 
 let initialized = false;
 
-export function getSeedSql(db: DatabaseSync): string {
+export function *getSeedSql(db: DatabaseSync): Generator<string> {
 	if (!db) {
 		throw new Error('Database is not initialized; cannot seed navigation data.');
 	}
 	
 	// this prevents duplication during generation
 	if (initialized) {
-		return '';
+		return;
 	}
-	
-	const seedSqlStatements: string[] = [];
 	
 	for (const depSeedSqlMethod of dependencySeedFunctions) {
-		seedSqlStatements.push(depSeedSqlMethod(db));
+		for (const sql of depSeedSqlMethod(db)) {
+			yield sql;
+		}
 	}
 	
-	seedSqlStatements.push(
-		'--- Seeding items tables (items.seed.ts) ---',
-		setupToSql(itemsTableSetup, db),
-	);
+	yield '--- Seeding items tables (items.seed.ts) ---';
+	for (const sql of setupToSql(itemsTableSetup, db)) {
+		yield sql;
+	}
 	
 	initialized = true;
-	
-	return seedSqlStatements.filter(Boolean).join('\n');
 }
 
 export interface DbItem {
