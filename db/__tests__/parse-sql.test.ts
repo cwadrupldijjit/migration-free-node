@@ -51,67 +51,70 @@ describe('parseCreateTableSql | columns', () => {
 		equal(tableSetup.name, 'test_table');
 		equal(tableSetup.fields.length, 13);
 		
-		const createdAtField = tableSetup.fields[0];
+		const [
+			createdAtField,
+			isActiveField,
+			nameField,
+			scoreField,
+			positiveField,
+			negativeField,
+			expressionField,
+			blobDataField,
+			emptyStringField,
+			nullField,
+			booleanTrueField,
+			booleanFalseField,
+			extremeQuoteField,
+		] = tableSetup.fields;
+		
 		equal(createdAtField.name, 'created_at');
 		equal(createdAtField.type, 'TEXT');
 		equal(createdAtField.default, 'CURRENT_TIMESTAMP');
 		
-		const isActiveField = tableSetup.fields[1];
 		equal(isActiveField.name, 'is_active');
 		equal(isActiveField.type, 'INTEGER');
 		equal(isActiveField.default, 1);
 		
-		const nameField = tableSetup.fields[2];
 		equal(nameField.name, 'name');
 		equal(nameField.type, 'TEXT');
 		equal(nameField.default, 'Unnamed');
 		
-		const scoreField = tableSetup.fields[3];
 		equal(scoreField.name, 'score');
 		equal(scoreField.type, 'REAL');
 		equal(scoreField.default, 0);
 		
-		const positiveField = tableSetup.fields[4];
 		equal(positiveField.name, 'positive');
 		equal(positiveField.type, 'INTEGER');
 		equal(positiveField.default, 100);
 		
-		const negativeField = tableSetup.fields[5];
 		equal(negativeField.name, 'negative');
 		equal(negativeField.type, 'INTEGER');
 		equal(negativeField.default, -50);
 		
-		const expressionField = tableSetup.fields[6];
 		equal(expressionField.name, 'expression');
 		equal(expressionField.type, 'TEXT');
 		equal(expressionField.default, 'LOWER(\'DEFAULT\')');
 		
-		const blobDataField = tableSetup.fields[7];
 		equal(blobDataField.name, 'blob_data');
 		equal(blobDataField.type, 'BLOB');
 		equal(blobDataField.default instanceof Uint8Array, true);
 		
-		const emptyStringField = tableSetup.fields[8];
 		equal(emptyStringField.name, 'empty_string');
 		equal(emptyStringField.type, 'TEXT');
 		equal(emptyStringField.default, '');
 		
-		const nullField = tableSetup.fields[9];
 		equal(nullField.name, 'null_field');
 		equal(nullField.type, 'TEXT');
 		equal(nullField.default, 'NULL');
 		
-		const booleanTrueField = tableSetup.fields[10];
 		equal(booleanTrueField.name, 'boolean_true');
 		equal(booleanTrueField.type, 'INTEGER');
 		equal(booleanTrueField.default, true);
 		
-		const booleanFalseField = tableSetup.fields[11];
 		equal(booleanFalseField.name, 'boolean_false');
 		equal(booleanFalseField.type, 'INTEGER');
 		equal(booleanFalseField.default, false);
 		
-		const extremeQuoteField = tableSetup.fields[12];
 		equal(extremeQuoteField.name, 'extreme_quote');
 		equal(extremeQuoteField.type, 'TEXT');
 		equal(extremeQuoteField.default, "'");
@@ -131,30 +134,33 @@ describe('parseCreateTableSql | columns', () => {
 		equal(tableSetup.name, 'test_table');
 		equal(tableSetup.fields.length, 5);
 		
-		const idField = tableSetup.fields[0];
+		const [
+			idField,
+			usernameField,
+			ageField,
+			emailField,
+			bioField,
+		] = tableSetup.fields;
+		
 		equal(idField.name, 'id');
 		equal(idField.type, 'INTEGER');
 		equal(typeof idField.primaryKey, 'object');
 		equal((idField.primaryKey as { onConflict: string }).onConflict, 'IGNORE');
 		equal(idField.autoIncrement, true);
 		
-		const usernameField = tableSetup.fields[1];
 		equal(usernameField.name, 'username');
 		equal(usernameField.type, 'TEXT');
 		equal(usernameField.unique, true);
 		equal(usernameField.notNull, true);
 		
-		const ageField = tableSetup.fields[2];
 		equal(ageField.name, 'age');
 		equal(ageField.type, 'INTEGER');
 		equal(ageField.check, 'age >= 0');
 		
-		const emailField = tableSetup.fields[3];
 		equal(emailField.name, 'email');
 		equal(emailField.type, 'TEXT');
 		equal(emailField.collation, 'NOCASE');
 		
-		const bioField = tableSetup.fields[4];
 		equal(bioField.name, 'bio');
 		equal(bioField.type, 'TEXT');
 		equal(bioField.default, 'Hello!');
@@ -178,46 +184,49 @@ describe('parseCreateTableSql | columns', () => {
 		equal(tableSetup.name, 'test_table');
 		equal(tableSetup.fields.length, 8);
 		
-		const tableOnlyField = tableSetup.fields[0];
+		const [
+			tableOnlyField,
+			specificColumnField,
+			multipleColumnsField,
+			onUpdateField,
+			onDeleteField,
+			matchClauseField,
+			deferrableClauseField,
+			motherOfAllClausesField,
+		] = tableSetup.fields;
+		
 		equal(tableOnlyField.name, 'table_only');
 		equal(typeof tableOnlyField.references, 'object');
 		equal(tableOnlyField.references.table, 'other_table');
 		
-		const specificColumnField = tableSetup.fields[1];
 		equal(specificColumnField.name, 'specific_column');
 		equal(specificColumnField.references.table, 'another_table');
 		equal(specificColumnField.references.fields.length, 1);
 		equal(specificColumnField.references.fields[0], 'id');
 		
-		const multipleColumnsField = tableSetup.fields[2];
 		equal(multipleColumnsField.name, 'multiple_columns');
 		equal(multipleColumnsField.references.table, 'some_table');
 		equal(multipleColumnsField.references.fields.length, 2);
 		equal(multipleColumnsField.references.fields[0], 'col1');
 		equal(multipleColumnsField.references.fields[1], 'col2');
 		
-		const onUpdateField = tableSetup.fields[3];
 		equal(onUpdateField.name, 'on_update');
 		equal(onUpdateField.references.table, 'foo_table');
 		equal(onUpdateField.references.onUpdate, 'SET NULL');
 		
-		const onDeleteField = tableSetup.fields[4];
 		equal(onDeleteField.name, 'on_delete');
 		equal(onDeleteField.references.table, 'bar_table');
 		equal(onDeleteField.references.onDelete, 'RESTRICT');
 		
-		const matchClauseField = tableSetup.fields[5];
 		equal(matchClauseField.name, 'match_clause');
 		equal(matchClauseField.references.table, 'baz_table');
 		equal(matchClauseField.references.match, 'foo');
 		
-		const deferrableClauseField = tableSetup.fields[6];
 		equal(deferrableClauseField.name, 'deferrable_clause');
 		equal(deferrableClauseField.references.table, 'quux_table');
 		equal(deferrableClauseField.references.deferrable.negated, true);
 		equal(deferrableClauseField.references.deferrable.type, 'DEFERRED');
 		
-		const motherOfAllClausesField = tableSetup.fields[7];
 		equal(motherOfAllClausesField.name, 'mother_of_all_clauses');
 		equal(motherOfAllClausesField.references.table, 'blah_table');
 		equal(motherOfAllClausesField.references.fields.length, 1);
@@ -239,14 +248,17 @@ describe('parseCreateTableSql | columns', () => {
 		equal(tableSetup.name, 'test_table');
 		equal(tableSetup.fields.length, 2);
 		
-		const idField = tableSetup.fields[0];
+		const [
+			idField,
+			nameField,
+		] = tableSetup.fields;
+		
 		equal(idField.name, 'id');
 		equal(idField.type, 'INTEGER');
 		equal(typeof idField.generated, 'object');
 		equal(idField.generated.expression, 'ABS(random() % 100)');
 		equal(idField.generated.stored, true);
 		
-		const nameField = tableSetup.fields[1];
 		equal(nameField.name, 'name');
 		equal(nameField.type, 'TEXT');
 		equal(typeof nameField.generated, 'object');
@@ -270,22 +282,25 @@ describe('parseCreateTableSql | constraints', () => {
 		equal(tableSetup.name, 'test_table');
 		equal(tableSetup.constraints.length, 4);
 		
-		const primaryKeyConstraint = tableSetup.constraints[0];
+		const [
+			primaryKeyConstraint,
+			uniqueConstraint,
+			checkConstraint,
+			foreignKeyConstraint,
+		] = tableSetup.constraints;
+		
 		equal(primaryKeyConstraint.type, 'PRIMARY KEY');
 		equal(primaryKeyConstraint.fields.length, 1);
 		equal(primaryKeyConstraint.fields[0], 'id');
 		
-		const uniqueConstraint = tableSetup.constraints[1];
 		equal(uniqueConstraint.type, 'UNIQUE');
 		equal(uniqueConstraint.fields.length, 1);
 		equal(uniqueConstraint.fields[0], 'id');
 		
-		const checkConstraint = tableSetup.constraints[2];
 		equal(checkConstraint.type, 'CHECK');
 		equal(checkConstraint.fields.length, 1);
 		equal(checkConstraint.fields[0], 'id > 0');
 		
-		const foreignKeyConstraint = tableSetup.constraints[3];
 		equal(foreignKeyConstraint.type, 'FOREIGN KEY');
 		equal(foreignKeyConstraint.fields.length, 1);
 		equal(foreignKeyConstraint.fields[0], 'id');

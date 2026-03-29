@@ -57,7 +57,7 @@ describe('setupToCreateSql', () => {
 		
 		const result = setupToCreateSql(tableSetup);
 		
-		const [ firstStatement, secondStatement, ...rest ] = result.split(';')
+		const [ firstStatement, secondStatement, ...rest ] = Array.from(result)
 			.map(s => s.trim())
 			.filter(Boolean);
 		equal(firstStatement.startsWith('CREATE TABLE test_table ('), true);
@@ -129,7 +129,12 @@ describe('setupToUpdateSql', () => {
 	
 	beforeEach(() => {
 		db = new DatabaseSync(':memory:');
-		db.exec(getMetaTableSeedQueries(db));
+		let metaSeedQuery = '';
+		
+		for (const sql of getMetaTableSeedQueries(db)) {
+			metaSeedQuery += sql + '\n';
+		}
+		db.exec(metaSeedQuery);
 	});
 	
 	afterEach(() => {
@@ -148,15 +153,17 @@ describe('setupToUpdateSql', () => {
 			constraints: [],
 			indexes: [],
 		};
-		db.exec(setupToCreateSql(tableSetup));
+		
+		const createSql = Array.from(setupToCreateSql(tableSetup)).join('\n');
+		db.exec(createSql);
 		
 		tableSetup.fields.push({ name: 'description', type: 'TEXT', uuid: 'description' });
 		
-		const alterStatements = setupToUpdateSql(tableSetup, db);
+		const alterSql = Array.from(setupToUpdateSql(tableSetup, db)).join('\n');
 		
-		equal(alterStatements.includes('ALTER TABLE test_table ADD COLUMN description TEXT;'), true);
+		equal(alterSql.includes('ALTER TABLE test_table ADD COLUMN description TEXT;'), true);
 		// This must not fail
-		db.exec(alterStatements);
+		db.exec(alterSql);
 	});
 	
 	test('Given a column that should have a name change, it will generate sql to rename the column', () => {
@@ -169,12 +176,12 @@ describe('setupToUpdateSql', () => {
 			],
 		};
 		
-		db.exec(setupToCreateSql(tableSetup));
+		db.exec(Array.from(setupToCreateSql(tableSetup)).join('\n'));
 		
 		// rename 'name' to 'full_name'
 		tableSetup.fields[1].name = 'full_name';
 		
-		const alterStatements = setupToUpdateSql(tableSetup, db);
+		const alterStatements = Array.from(setupToUpdateSql(tableSetup, db)).join('\n');
 		
 		console.log('ALTER STATEMENTS:', alterStatements);
 		
@@ -194,12 +201,12 @@ describe('setupToUpdateSql', () => {
 			],
 		};
 		
-		db.exec(setupToCreateSql(tableSetup));
+		db.exec(Array.from(setupToCreateSql(tableSetup)).join('\n'));
 		
 		// new constraint now exists
 		tableSetup.fields[1].notNull = true;
 		
-		const alterStatements = setupToUpdateSql(tableSetup, db);
+		const alterStatements = Array.from(setupToUpdateSql(tableSetup, db)).join('\n');
 		
 		equal(alterStatements.includes(`CREATE TABLE ${tableSetup.name}`), true);
 		equal(alterStatements.includes(`NOT NULL`), true);
